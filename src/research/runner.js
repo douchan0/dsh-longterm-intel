@@ -15,7 +15,7 @@ const ACTIVE_RUNS = new Set(); // per-process overlap protection
 
 export function createRunner({ dataRoot, config, store, mm, budget, logger }) {
   const MAX_ITEMS_PER_RUN = 40;
-  const ANALYSIS_BATCH_CHARS = 24_000;
+  const ANALYSIS_BATCH_CHARS = 48_000;
 
   async function run(project, { runId } = {}) {
     if (ACTIVE_RUNS.has(project.project_id)) throw new Error(`project ${project.project_id} already has a running research run (overlap protection)`);
@@ -232,16 +232,28 @@ export function createRunner({ dataRoot, config, store, mm, budget, logger }) {
   }
 
   function buildAnalysisInput(docEntries) {
+    // Priority interleave so small chatty items (HN feed, commits) can't starve
+    // the high-value material (official boards JSON, verification pages,
+    // video transcripts/meta). Ties keep fetching order.
+    const prio = (doc) => {
+      const url = doc.url ?? '';
+      if (/boards-api\.greenhouse\.io|api\.greenhouse|lever\.co\/v0|ashbyhq\.com|verification/i.test(url) || /greenhouse|ashby|lever/i.test(doc.kind ?? '')) return 0;
+      if (String(doc.text ?? '').startsWith('{"organic"')) return 0;
+      if (['video_transcript', 'youtube_transcript', 'audio_transcript', 'video_meta', 'video_frame_analysis'].includes(doc.kind)) return 1;
+      if (doc.kind === 'feed_entry') return 3;
+      return 2;
+    };
+    const entries = [...docEntries].sort((a, b) => prio(b.documents[0]) - prio(a.documents[0]));
     const blocks = [];
     const docIds = [];
     let chars = 0;
-    for (const entry of docEntries) {
-      for (const doc of entry.documents) {
+    for (const entry of entries) {
+      for (const doc of ([...entry.documents].sort((a, b) => prio(a) - prio(b)))) {
         const text = String(doc.text ?? '').trim();
         if (text.length < 40) continue;
         if (chars >= ANALYSIS_BATCH_CHARS) break;
         const pub = entry.item.published_at ? `发布时间 ${entry.item.published_at}` : '发布时间未知';
-        const block = `# ${doc.kind} | ${entry.item.title} | ${doc.url} | ${pub}\n${truncate(text, 3000)}`;
+        const block = `# ${doc.kind} | ${entry.item.title} | ${doc.url} | ${pub}\n${truncate(text, 6000)}`;
         blocks.push(block);
         docIds.push(doc.id);
         chars += block.length;
@@ -286,7 +298,7 @@ ${blocks.join('\n\n----\n\n')}`;
     const res = await mm.text([
       { role: 'system', content: '你是中国研究分析引擎，输出严格 JSON。' },
       { role: 'user', content: `${ctxSource}\n\n${user}` },
-    ], { maxTokens: 16_000 });
+    ], { maxTokens: 16_000, timeoutMs: 900_000 });
     budget.logUsage({ projectId: project.project_id, runId: rid, provider: 'minimax', tool: 'text', model: res.model, quantity: 1, meta: res.usage ? { input_tokens: res.usage.input_tokens, output_tokens: res.usage.output_tokens } : null });
     cost.minimax_calls++;
     if (res.usage) {
