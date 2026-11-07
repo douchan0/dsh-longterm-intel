@@ -7,6 +7,29 @@ import { htmlToText, tryJson } from '../core/util.js';
 
 const DEFAULT_UA = process.env.INTEL_UA || 'dsh-longterm-intel/0.1 (+local research)';
 
+/**
+ * Compact common official recruitment-board payloads into plain lines.
+ * Shapes supported: Greenhouse {jobs:{title,location{name},absolute_url}},
+ * {jobs:{text,categories.location,hostedUrl}}}. Returns null otherwise.
+ */
+export function compactJobsBoard(rawText) {
+  const d = tryJson(rawText);
+  if (!d || typeof d !== 'object') return null;
+  const lines = [];
+  for (const j of Array.isArray(d.jobs) ? d.jobs : []) {
+    if (!j || typeof j !== 'object') continue;
+    const t = String(j.title ?? j.text ?? j.name ?? '').replace(/\s+/g, ' ').trim();
+    if (!t) continue;
+    const l = j.location;
+    const loc = String(typeof l === 'string' ? l : (l?.name ?? j.remote_name ?? j.categories?.location ?? '')).replace(/\s+/g, ' ').trim();
+    const url = j.absolute_url ?? j.hostedUrl ?? j.applyUrl ?? '';
+    lines.push(`${d.title ?? ''} :: ${t} | ${loc} | ${url}`);
+  }
+  if (!lines.length) return null;
+  const summary = `招聘板 JSON 已压缩：共 ${lines.length} 个岗位。格式：公司 :: 岗位 | 地区 | 申请链接\n${lines.slice(0, 140).join('\n')}`;
+  return summary + (lines.length > 140 ? `\n…（另有 ${lines.length - 140} 条未列出）` : '');
+}
+
 async function fetchText(url, { timeoutMs = 30_000, headers = {} } = {}) {
   const res = await fetch(url, {
     headers: { 'user-agent': DEFAULT_UA, ...headers },
@@ -114,7 +137,10 @@ export async function pollWebOrRss(source, ctx) {
       kind: 'web_page',
       url: page.url,
       title: page.title,
-      raw: page.text,
+      // boards JSON raw dumps are big but low-density; compact them into
+      // stable, analysis-friendly lines (title | location | link) so the
+      // research model spends tokens on content instead of JSON syntax
+      raw: compactJobsBoard(page.text) ?? page.text,
       published_at: page.published_at,
     }];
   }
