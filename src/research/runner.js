@@ -125,7 +125,10 @@ const MAX_ANALYSIS_BATCHES_PER_RUN = 3;
         await followUpSearch(project, cost.gaps.subquestions, rid, stats, cost);
       }
 
-      store.updateBy('research_runs', { finished_at: nowIso(), status: stats.errors.length && stats.processed === 0 ? 'failed' : 'completed', stats: JSON.stringify(stats), cost: JSON.stringify(compactCost(cost)), notes: runRow.notes }, { id: rid });
+      const runStatus = stats.errors.length
+        ? (stats.processed > 0 || stats.observations > 0 ? 'completed_with_errors' : 'failed')
+        : 'completed';
+      store.updateBy('research_runs', { finished_at: nowIso(), status: runStatus, stats: JSON.stringify(stats), cost: JSON.stringify(compactCost(cost)), notes: runRow.notes }, { id: rid });
       return { run_id: rid, stats, cost: compactCost(cost) };
     } catch (e) {
       store.updateBy('research_runs', { finished_at: nowIso(), status: 'failed', stats: JSON.stringify(stats), cost: JSON.stringify(compactCost(cost)), notes: String(e.message || e).slice(0, 800) }, { id: rid });
