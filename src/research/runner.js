@@ -315,7 +315,7 @@ ${blocks.join('\n\n----\n\n')}`;
     const res = await mm.text([
       { role: 'system', content: '你是中国研究分析引擎，输出严格 JSON。' },
       { role: 'user', content: `${ctxSource}\n\n${user}` },
-    ], { maxTokens: 16_000, timeoutMs: 900_000 });
+    ], { maxTokens: 24_000, timeoutMs: 900_000 });
     budget.logUsage({ projectId: project.project_id, runId: rid, provider: 'minimax', tool: 'text', model: res.model, quantity: 1, meta: res.usage ? { input_tokens: res.usage.input_tokens, output_tokens: res.usage.output_tokens } : null });
     cost.minimax_calls++;
     if (res.usage) {
