@@ -75,6 +75,18 @@
 
 ---
 
+# 夜间实测（2026-11-07 深夜 → 08:00，night journal: data/overnight/night-2026-11-07.jsonl）
+
+| 发现 | 严重度 | 根因 | 状态 |
+|---|---|---|---|
+| B 站视频重复入库（同 BV 两行） | 高 | normalizeVideo 把 view/like_count 放进 raw → 内容哈希每次 poll 抖动 | **已修**（哈希稳定化，commit "stable bilibili content hash"） |
+| teacher 每轮重复 ingest 官方列表页（2 条/轮） | 高 | stats.gov.cn/moe 列表页 raw 含动态区 → 哈希摇动；同源：分析层还会把同 URL 重复作为"新" | 待修（明名单 top1：稳定哈希/URL+title 指纹） |
+| search_hit 条目再处理产生 27 行 kind=null 文档 | 中 | stage2 兜底分支没写 kind | **已修**（metaDoc 兜底 kind=item.kind） |
+| 教师基线批两次调用 16k 输出均被 thinking 吃穿（claims=0） | 高 | M3.1-Flash 思考量随输入放大 | A/B 对照实验：正在跑的 Host 仍是 16k（对照组），代码已改 24k（待重启验证） |
+| RSS（hnrss）周期性 fetch failed | 中 | 瞬时网络/UA 限制 | 记录中（重试策略待明早补） |
+| 增量空轮零调用 | 良好 | idempotency 正确 | 验证达成（APAC 4 轮里 3 轮零成本） |
+| 额度窗口重置的行为 | 观察 | interval 窗口 50%→重置后 100% | 已确认探测逻辑无误，衰减与 usage_logs 一致 |
+
 # 第二轮验收补充（2026-11-07 晚，首个真实项目 apac-job-intel）
 
 | 项 | 结论 | 证据 |
