@@ -100,13 +100,13 @@ export function createBudgetManager(config, store, logger) {
     const now = Date.now();
     return store.list('usage_logs', { provider: 'minimax' }, { orderBy: 'ts', desc: true, limit: 5000 })
       .filter((u) => Date.parse(u.ts) > now - DAY_MS)
-      .reduce((a, u) => a + (u.quantity ?? 0), 0);
+      .reduce((a, u) => a + Number(u.quantity ?? 0), 0);
   }
   function weekSum() {
     const now = Date.now();
     return store.list('usage_logs', { provider: 'minimax' }, { orderBy: 'ts', desc: true, limit: 5000 })
       .filter((u) => Date.parse(u.ts) > now - WEEK_MS)
-      .reduce((a, u) => a + (u.quantity ?? 0), 0);
+      .reduce((a, u) => a + Number(u.quantity ?? 0), 0);
   }
 
   /** Account for one call AFTER it happened. */
@@ -122,7 +122,7 @@ export function createBudgetManager(config, store, logger) {
     const rows = store.list('usage_logs', { provider: 'minimax' }, { orderBy: 'ts', desc: true, limit: 2000 })
       .filter((u) => u.project_id === projectId && Date.parse(u.ts) > now - windowMs);
     const byTool = {};
-    for (const r of rows) byTool[r.tool] = (byTool[r.tool] ?? 0) + (r.quantity ?? 1);
+    for (const r of rows) byTool[r.tool] = (byTool[r.tool] ?? 0) + Number(r.quantity ?? 1);
     return { window: windowMs, calls: rows.length, by_tool: byTool };
   }
 
@@ -131,7 +131,7 @@ export function createBudgetManager(config, store, logger) {
     const rows = store.list('usage_logs', {}, { orderBy: 'ts', desc: true, limit: 5000 });
     const day = rows.filter((u) => Date.parse(u.ts) > now - DAY_MS);
     const week = rows.filter((u) => Date.parse(u.ts) > now - WEEK_MS);
-    const sum = (rs) => rs.reduce((a, u) => a + (u.quantity ?? 0), 0);
+    const sum = (rs) => rs.reduce((a, u) => a + Number(u.quantity ?? 0), 0);
     return {
       day: { by_provider: groupBy(day, 'provider'), total: sum(day) },
       week: { by_provider: groupBy(week, 'provider'), total: sum(week) },

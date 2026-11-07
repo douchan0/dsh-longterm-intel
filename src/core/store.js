@@ -71,7 +71,7 @@ const TABLES = {
     projectScoped: true,
   },
   usage_logs: {
-    cols: ['id:pk', 'ts', 'project_id', 'provider', 'tool', 'model', 'quantity', 'unit', 'meta'],
+    cols: ['id:pk', 'ts', 'project_id', 'provider', 'tool', 'model', 'quantity:int', 'unit', 'meta'],
     projectScoped: false,
   },
 };
@@ -82,10 +82,13 @@ function defId() {
   return sha1(`${Date.now()}-${Math.random()}`).slice(0, 20);
 }
 
+const TYPE_SUFFIX = { int: 'INTEGER', real: 'REAL' };
+
 function specToSchema(table, spec) {
   const parts = spec.cols.map((c) => {
     const [name, flag] = c.split(':');
     if (flag === 'pk') return `${name} TEXT PRIMARY KEY`;
+    if (TYPE_SUFFIX[flag]) return `${name} ${TYPE_SUFFIX[flag]}`;
     return `${name} TEXT`;
   });
   let sql = `CREATE TABLE IF NOT EXISTS ${table} (${parts.join(', ')})`;
