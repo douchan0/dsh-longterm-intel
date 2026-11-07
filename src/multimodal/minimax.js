@@ -79,6 +79,7 @@ export function createMiniMaxAdapter(config, logger) {
       } finally {
         try { unlinkSync(tmpFile); } catch { /* best effort */ }
       }
+      return parseTextReply(out, model);
     },
     /** Image understanding (local path or URL). */
     async vision(image, prompt = 'Describe the image.', { timeoutMs = 180_000 } = {}) {

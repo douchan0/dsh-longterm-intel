@@ -15,7 +15,8 @@ const ACTIVE_RUNS = new Set(); // per-process overlap protection
 
 export function createRunner({ dataRoot, config, store, mm, budget, logger }) {
   const MAX_ITEMS_PER_RUN = 40;
-  const ANALYSIS_BATCH_CHARS = 48_000;
+  const ANALYSIS_BATCH_CHARS = 16_000; // tokens ~4k input; keeps thinking within output budget
+const MAX_ANALYSIS_BATCHES_PER_RUN = 3;
 
   async function run(project, { runId } = {}) {
     if (ACTIVE_RUNS.has(project.project_id)) throw new Error(`project ${project.project_id} already has a running research run (overlap protection)`);
@@ -81,29 +82,38 @@ export function createRunner({ dataRoot, config, store, mm, budget, logger }) {
         runDocs.push({ item, documents: [d] });
       }
 
-      // ---- stage 3: LLM analysis over the NEW + un-analyzed material only
-      const analysisInput = buildAnalysisInput(runDocs);
-      if (analysisInput.blocks.length > 0) {
-        const gate = await budget.gateMinimax({ projectId: project.project_id, kind: 'analysis' }, { calls: 1 });
+      // ---- stage 3: LLM analysis over the NEW + un-analyzed material only,
+      // in batches sized to fit each batch's reasoning/output budget
+      const batches = buildAnalysisBatches(runDocs);
+      if (batches.length > 0) {
+        const gate = await budget.gateMinimax({ projectId: project.project_id, kind: 'analysis' }, { calls: batches.length });
         if (!gate.allowed) {
           stats.skipped_budget++;
           runRow.notes = `analysis skipped: ${gate.reason}`;
           if (project.pause_on_quota_exhaust && /预算|上限|保留线/.test(gate.reason)) scheduleAutoPause(project, gate.reason);
         } else {
-          const an = await analyzeBatch(project, analysisInput, rid, stats, cost);
-          // mark analyzed so the same content is never re-modeled — but a
-          // truncated (max_tokens) response stays un-marked: the next run
-          // retries it rather than silently losing the tail
-          if (!an?.partial) {
-            for (const id of analysisInput.docIds) {
-              const d = store.get('documents', { id });
-              if (!d) continue;
-              const meta = extractJson(d.meta) ?? {};
-              meta.analyzed_in = rid;
-              store.updateBy('documents', { meta: JSON.stringify(meta) }, { id });
+          for (const batch of batches) {
+            let an = null;
+            try {
+              an = await analyzeBatch(project, batch, rid, stats, cost);
+            } catch (e) {
+              stats.errors.push(`analysis batch: ${String(e.message || e).slice(0, 140)}`);
+              continue; // other batches still get a shot this round
             }
-          } else {
-            runNote(rid, `analysis truncated by max_tokens; docs left un-analyzed for retry`);
+            // mark analyzed so the same content is never re-modeled — but a
+            // truncated (max_tokens) or failed response stays un-marked: the
+            // next run retries it（断点续跑覆盖分析阶段）
+            if (!an?.partial) {
+              for (const id of batch.docIds) {
+                const d = store.get('documents', { id });
+                if (!d) continue;
+                const meta = extractJson(d.meta) ?? {};
+                meta.analyzed_in = rid;
+                store.updateBy('documents', { meta: JSON.stringify(meta) }, { id });
+              }
+            } else {
+              runNote(rid, `analysis truncated by max_tokens; batch docs left un-analyzed for retry`);
+            }
           }
         }
       } else {
@@ -231,36 +241,40 @@ export function createRunner({ dataRoot, config, store, mm, budget, logger }) {
     return docs.some((d) => String(d.text ?? '').trim().length >= 40);
   }
 
-  function buildAnalysisInput(docEntries) {
-    // Priority interleave so small chatty items (HN feed, commits) can't starve
-    // the high-value material (official boards JSON, verification pages,
-    // video transcripts/meta). Ties keep fetching order.
-    const prio = (doc) => {
+  function buildAnalysisBatches(docEntries) {
+    // Priority interleave so chatty small items (HN feed, commits) can't starve
+    // the high-value material (official boards JSON, verification pages, video
+    // transcripts). Then split into batches so that each gets a full reasoning
+    // and output token budget (analysis over huge single inputs dies inside
+    // thinking and wastes the run).
+    const prio = (doc = {}) => {
       const url = doc.url ?? '';
-      if (/boards-api\.greenhouse\.io|api\.greenhouse|lever\.co\/v0|ashbyhq\.com|verification/i.test(url) || /greenhouse|ashby|lever/i.test(doc.kind ?? '')) return 0;
+      if (/boards-api\.greenhouse\.io|api\.greenhouse|lever\.co\/v0|ashbyhq\.com|verification/i.test(url)) return 0;
       if (String(doc.text ?? '').startsWith('{"organic"')) return 0;
       if (['video_transcript', 'youtube_transcript', 'audio_transcript', 'video_meta', 'video_frame_analysis'].includes(doc.kind)) return 1;
       if (doc.kind === 'feed_entry') return 3;
       return 2;
     };
     const entries = [...docEntries].sort((a, b) => prio(b.documents[0] ?? {}) - prio(a.documents[0] ?? {}));
-    const blocks = [];
-    const docIds = [];
-    let chars = 0;
-    for (const entry of entries) {
-      for (const doc of ([...entry.documents].sort((a, b) => prio(a) - prio(b)))) {
+    const batches = [];
+    let current = null;
+    outer: for (const entry of entries) {
+      for (const doc of [...entry.documents].sort((a, b) => prio(a) - prio(b))) {
         const text = String(doc.text ?? '').trim();
         if (text.length < 40) continue;
-        if (chars >= ANALYSIS_BATCH_CHARS) break;
+        if (!current || current.chars >= ANALYSIS_BATCH_CHARS) {
+          if (batches.length >= MAX_ANALYSIS_BATCHES_PER_RUN) break outer;
+          current = { blocks: [], docIds: [], chars: 0 };
+          batches.push(current);
+        }
         const pub = entry.item.published_at ? `发布时间 ${entry.item.published_at}` : '发布时间未知';
         const block = `# ${doc.kind} | ${entry.item.title} | ${doc.url} | ${pub}\n${truncate(text, 6000)}`;
-        blocks.push(block);
-        docIds.push(doc.id);
-        chars += block.length;
+        current.blocks.push(block);
+        current.docIds.push(doc.id);
+        current.chars += block.length;
       }
-      if (chars >= ANALYSIS_BATCH_CHARS) break;
     }
-    return { blocks, docIds };
+    return batches;
   }
 
   async function analyzeBatch(project, analysisInput, rid, stats, cost) {
