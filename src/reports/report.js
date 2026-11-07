@@ -232,6 +232,38 @@ export function createReportFactory({ dataRoot, config, store, mm, budget, logge
           }
           break;
         }
+        case 'findings_table': {
+          // generic structured-findings table: claims whose subject prefix is
+          // configurable via report_template.findings_prefix (default 'finding:')
+          L.push('\n## 结构化发现表\n');
+          const fp = project.report_template?.findings_prefix ?? 'finding:';
+          const find = claims.filter((c) => (c.subject ?? '').startsWith(fp) && c.status !== 'superseded');
+          const byS = new Map();
+          for (const c of find) {
+            const prev = byS.get(c.subject);
+            if (!prev || (c.last_seen ?? '') > (prev.last_seen ?? '')) byS.set(c.subject, c);
+          }
+          const rowsF = [...byS.values()];
+          if (!rowsF.length) { L.push('| 主题 | 数据点 | 来源类型 | 与基线对比 | 意义 | 风险 |\n|---|---|---|---|---|---|\n| （本期无结构化发现） | | | | | |'); break; }
+          L.push('| 主题 | 数据点 | 来源类型 | 与基线对比 | 意义 | 风险 |');
+          L.push('|---|---|---|---|---|---|');
+          for (const c of rowsF.slice(0, 25)) {
+            let f = null;
+            try { f = tryJson(c.text); } catch { /* plain text */ }
+            const dps = Array.isArray(f?.data_points)
+              ? f.data_points.map((d) => `${d.metric ?? ''}=${d.value ?? ''}(${d.year ?? ''})`).join('；')
+              : (f?.numbers ?? '');
+            L.push([
+              truncateShort((c.subject ?? '').replace(new RegExp(`^${fp}`), ''), 45),
+              truncateShort(dps ?? (f?.summary ?? c.text), 120),
+              f?.source_type ?? '',
+              f?.compares_to_baseline ?? '',
+              truncateShort(f?.significance ?? '', 90),
+              truncateShort(f?.risks ?? '', 80),
+            ].map((x) => String(x ?? '').replace(/\|/g, '\\|')).join(' | '));
+          }
+          break;
+        }
         case 'verification': {
           // Required honesty section: failures, limitations, unverified items.
           L.push('\n## 十三、失败、限制与未验证信息\n');

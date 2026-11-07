@@ -102,8 +102,23 @@ function specToSchema(table, spec) {
 // node:sqlite statement.run/accept: named parameters need $-prefixed keys.
 function bind(obj) {
   const out = {};
-  for (const [k, v] of Object.entries(obj)) out[k.startsWith('$') || k.startsWith(':') ? k : `$${k}`] = v;
+  for (const [k, v] of Object.entries(obj)) out[k.startsWith('$') || k.startsWith(':') ? k : `$${k}`] = cleanValue(v);
   return out;
+}
+
+/** SQLite accepts strings/blob/number/bigint/null — coerce model-supplied
+ * free-form fields (objects, arrays, booleans) into storable scalars so a
+ * single weird field never kills an analysis batch. */
+function cleanValue(v) {
+  if (v === undefined) return null;
+  if (v === null) return null;
+  if (typeof v === 'boolean') return v ? 1 : 0;
+  if (typeof v === 'number' || typeof v === 'bigint') return v;
+  if (typeof v === 'string') return v;
+  if (typeof v === 'object') {
+    try { return JSON.stringify(v); } catch { return String(v); }
+  }
+  return String(v);
 }
 
 class SqlBackend {
