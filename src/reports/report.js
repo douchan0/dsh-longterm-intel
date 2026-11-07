@@ -195,11 +195,18 @@ export function createReportFactory({ dataRoot, config, store, mm, budget, logge
           //   C: apac_allowed === false (or missing critical conditions)
           //   B: everything else (potential but unconfirmed parts)
           L.push('\n## 岗位信息表\n');
-          const jobClaims = claims.filter((c) => (c.subject ?? '').startsWith('job:'));
+          const jobClaims = claims.filter((c) => (c.subject ?? '').startsWith('job:') && c.status !== 'superseded');
+          // latest claim per subject — natural dedupe across rounds
+          const bySubject = new Map();
+          for (const c of jobClaims) {
+            const prev = bySubject.get(c.subject);
+            if (!prev || (c.last_seen ?? '') > (prev.last_seen ?? '')) bySubject.set(c.subject, c);
+          }
+          const rows0 = [...bySubject.values()];
           if (!jobClaims.length) { L.push('| 公司 | 职位 | 远程地区 | 学历 | 经验 | 技术栈 | 发布日期 | 核验日期 | 申请链接 | 匹配原因 | 风险 | 评级 |\n|---|---|---|---|---|---|---|---|---|---|---|---|\n| （本期无岗位数据） | | | | | | | | | | | |'); break; }
           L.push('| 公司 | 职位 | 远程地区 | 学历 | 经验 | 技术栈 | 发布日期 | 核验日期 | 申请链接 | 匹配原因 | 风险 | 评级 |');
           L.push('|---|---|---|---|---|---|---|---|---|---|---|---|');
-          for (const c of jobClaims.slice(0, 30)) {
+          for (const c of rows0.slice(0, 30)) {
             const ev = store.list('evidence', { claim_id: c.id }, { limit: 3 });
             const linkFromEvidence = ev.find((x) => x.url)?.url ?? '';
             let job = null;
