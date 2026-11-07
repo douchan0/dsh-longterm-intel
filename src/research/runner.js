@@ -15,8 +15,8 @@ const ACTIVE_RUNS = new Set(); // per-process overlap protection
 
 export function createRunner({ dataRoot, config, store, mm, budget, logger }) {
   const MAX_ITEMS_PER_RUN = 40;
-  const ANALYSIS_BATCH_CHARS = 16_000; // tokens ~4k input; keeps thinking within output budget
-const MAX_ANALYSIS_BATCHES_PER_RUN = 3;
+  const ANALYSIS_BATCH_CHARS = 9_000; // night-journal lesson: 16k-input batches go max_tokens by thinking alone
+const MAX_ANALYSIS_BATCHES_PER_RUN = 4;
 
   async function run(project, { runId } = {}) {
     if (ACTIVE_RUNS.has(project.project_id)) throw new Error(`project ${project.project_id} already has a running research run (overlap protection)`);
