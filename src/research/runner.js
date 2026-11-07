@@ -243,7 +243,7 @@ export function createRunner({ dataRoot, config, store, mm, budget, logger }) {
       if (doc.kind === 'feed_entry') return 3;
       return 2;
     };
-    const entries = [...docEntries].sort((a, b) => prio(b.documents[0]) - prio(a.documents[0]));
+    const entries = [...docEntries].sort((a, b) => prio(b.documents[0] ?? {}) - prio(a.documents[0] ?? {}));
     const blocks = [];
     const docIds = [];
     let chars = 0;
