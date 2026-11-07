@@ -8,6 +8,14 @@ import * as profiles from '../src/profiles/profiles.js';
 import { statSync, readFileSync } from 'node:fs';
 import yaml from 'js-yaml';
 
+const INTEL_TOOLS = [];
+
+export function createTools() {
+  return INTEL_TOOLS;
+}
+
+function define(t) { INTEL_TOOLS.push(t); }
+
 let runtimePromise = null;
 function runtime() {
   runtimePromise ??= createRuntime();
@@ -293,5 +301,3 @@ define({
     }
   },
 });
-
-function define(t) { return t; }
