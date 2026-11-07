@@ -3,7 +3,7 @@
 // Every item captures: original url, published date (when the source declares
 // one), fetched date, title and extracted text — publish time and event time
 // are distinct fields downstream (source_items.published_at vs events.occurred_at).
-import { htmlToText, tryJson } from '../core/util.js';
+import { htmlToText, tryJson, sha1 } from '../core/util.js';
 
 const DEFAULT_UA = process.env.INTEL_UA || 'dsh-longterm-intel/0.1 (+local research)';
 
