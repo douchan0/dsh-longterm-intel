@@ -90,14 +90,20 @@ export function createRunner({ dataRoot, config, store, mm, budget, logger }) {
           runRow.notes = `analysis skipped: ${gate.reason}`;
           if (project.pause_on_quota_exhaust && /预算|上限|保留线/.test(gate.reason)) scheduleAutoPause(project, gate.reason);
         } else {
-          await analyzeBatch(project, analysisInput, rid, stats, cost);
-          // mark analyzed so the same content is never re-modeled
-          for (const id of analysisInput.docIds) {
-            const d = store.get('documents', { id });
-            if (!d) continue;
-            const meta = extractJson(d.meta) ?? {};
-            meta.analyzed_in = rid;
-            store.updateBy('documents', { meta: JSON.stringify(meta) }, { id });
+          const an = await analyzeBatch(project, analysisInput, rid, stats, cost);
+          // mark analyzed so the same content is never re-modeled — but a
+          // truncated (max_tokens) response stays un-marked: the next run
+          // retries it rather than silently losing the tail
+          if (!an?.partial) {
+            for (const id of analysisInput.docIds) {
+              const d = store.get('documents', { id });
+              if (!d) continue;
+              const meta = extractJson(d.meta) ?? {};
+              meta.analyzed_in = rid;
+              store.updateBy('documents', { meta: JSON.stringify(meta) }, { id });
+            }
+          } else {
+            runNote(rid, `analysis truncated by max_tokens; docs left un-analyzed for retry`);
           }
         }
       } else {
@@ -231,7 +237,7 @@ export function createRunner({ dataRoot, config, store, mm, budget, logger }) {
         if (text.length < 40) continue;
         if (chars >= ANALYSIS_BATCH_CHARS) break;
         const pub = entry.item.published_at ? `发布时间 ${entry.item.published_at}` : '发布时间未知';
-        const block = `# ${doc.kind} | ${entry.item.title} | ${doc.url} | ${pub}\n${truncate(text, 5000)}`;
+        const block = `# ${doc.kind} | ${entry.item.title} | ${doc.url} | ${pub}\n${truncate(text, 3000)}`;
         blocks.push(block);
         docIds.push(doc.id);
         chars += block.length;
@@ -249,7 +255,8 @@ export function createRunner({ dataRoot, config, store, mm, budget, logger }) {
 研究问题（只在这个框架内工作）：
 ${project.research_questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
 关键词：${(project.keywords ?? []).join('、') || '（无）'}
-排除词：${(project.exclude_keywords ?? []).join('、') || '（无）'}`;
+排除词：${(project.exclude_keywords ?? []).join('、') || '（无）'}
+${(project.analysis_directives ?? []).length ? `本项目专项记录约定（用户配置）：\n- ${(project.analysis_directives ?? []).join('\n- ')}` : ''}`;
     const schema = {
       observations: [{ subject: '谁/什么', text: '一句话观察', kind: 'fact|claim|rumor|model_inference', confidence: 'high|medium|low', epistemic: '事实|观点|推断|未知', source_urls: ['url'] }],
       entities: [{ name: '', type: 'person|company|project|platform|topic', summary: '' }],
@@ -275,7 +282,7 @@ ${blocks.join('\n\n----\n\n')}`;
     const res = await mm.text([
       { role: 'system', content: '你是中国研究分析引擎，输出严格 JSON。' },
       { role: 'user', content: `${ctxSource}\n\n${user}` },
-    ], { maxTokens: 12_000 });
+    ], { maxTokens: 16_000 });
     budget.logUsage({ projectId: project.project_id, runId: rid, provider: 'minimax', tool: 'text', model: res.model, quantity: 1, meta: res.usage ? { input_tokens: res.usage.input_tokens, output_tokens: res.usage.output_tokens } : null });
     cost.minimax_calls++;
     if (res.usage) {
@@ -286,7 +293,7 @@ ${blocks.join('\n\n----\n\n')}`;
     let data = extractJson(stripFence(res.content));
     if (!data) {
       stats.errors.push('analysis output unparseable');
-      return;
+      return { partial: res.stop_reason === 'max_tokens' };
     }
     // ---- persist: observations / entities / events / claims(+evidence)
     for (const o of data.observations ?? []) {

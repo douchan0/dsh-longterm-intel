@@ -103,6 +103,7 @@ export function updateProfile(dataRoot, profileId, patch) {
   if (patch.name !== undefined) doc.name = patch.name;
   if (patch.summary !== undefined) doc.summary = patch.summary;
   if (patch.kind !== undefined) doc.kind = patch.kind;
+  if (patch.status !== undefined) doc.status = patch.status;
   if (patch.can_be_used_by !== undefined) doc.can_be_used_by = patch.can_be_used_by;
   doc.profile_id = profileId;
   doc.updated_at = nowIso();

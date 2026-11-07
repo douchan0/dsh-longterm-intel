@@ -150,6 +150,9 @@ export function validateProject(raw) {
     },
     budget: { daily_run_limit: raw.budget?.daily_run_limit ?? 2, minimax_calls_per_run: raw.budget?.minimax_calls_per_run ?? 30 },
     report_template: raw.report_template ?? null,
+    // Free-form per-project analysis directives injected into the research
+    // prompt (e.g. how to record items of a domain). Never a default.
+    analysis_directives: Array.isArray(raw.analysis_directives) ? raw.analysis_directives.map(String) : [],
     report_format: raw.report_format ?? 'markdown',
     retention: raw.retention ?? null,
     associated_profiles: Array.isArray(raw.associated_profiles) ? raw.associated_profiles.map(String) : [],
