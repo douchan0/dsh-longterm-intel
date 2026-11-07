@@ -72,3 +72,26 @@
 3. JSON 降级存储后端：未做正式验证。
 4. 报告图表（图片渲染）：MVP 输出 Markdown 表/列表，无图片图表（报告模板支持自定义小节）。
 5. web 页面正文抽取：内置轻量 HTML→text，复杂站点需要更完整的可读性抽取（第四阶段）。
+
+---
+
+# 第二轮验收补充（2026-11-07 晚，首个真实项目 apac-job-intel）
+
+| 项 | 结论 | 证据 |
+|---|---|---|
+| 调度真实触发（一次性任务） | VERIFIED | spec.at=now+90s，Host 进程 14:27:25Z 真实启动 research run（ периода DB run 9d7e79d8131fbb started_at），随后外部 pkill 打断 |
+| 一次性任务自我禁用 | VERIFIED（修复后） | 触发成功后 enabled=0 / next_run_at=null（否则复触发 bug，已修，commit "scheduler: one-shot disables itself"） |
+| 暂停阻断 Host 执行 | VERIFIED | pause 后 5s tick 内 last_status 不变，无新 run |
+| 重启识别 | VERIFIED | 跨进程 SQLite schedule rows 保留（daily next=北京 08:00、weekly next=周五 12:00 UTC）并由新 Host 加载 |
+| 中断恢复（--resume） | VERIFIED | 被外部杀掉的悬垂 running run → `intel run --resume` 标 interrupted → 新轮完成；遗留未分析文档被自动接续（11-47 个 docs 两轮 recovery） |
+| stale overlap 保护 | VERIFIED | 依"真实 in-flight run（6h 窗口）"判断，schedule cell 卡死不再永久阻塞 |
+| RSS 瞬时失败不毁轮 | VERIFIED | 单源 fetch failed → 新状态 `completed_with_errors`（24 obs/18 claims 已入库） |
+| 视频不重复转写 | VERIFIED | 第二轮+恢复轮 processed 0-1 条、零新增 mmx speech/vision 调用（usage_logs） |
+| 岗位重复计数修复 | VERIFIED | claim 身份语义（同 subject 更新 last_seen；update 走 superseded 链）；渲染层每 subject 取最新 |
+| 分析批次预算修复 | VERIFIED | 单大批次 thinking 吃满输出 → 每批 ≤16k 字符、单轮 ≤3 批；47 文档分 3 批成功（24 obs/20 claims/16 events） |
+| 板 JSON 压缩 | VERIFIED | greenhouse/ashby/lever JSON → "公司::岗位│地区│链接" 行，分析信噪比提升后关键岗位全部成 claim |
+| 官方岗位核验 | VERIFIED 5/6 | 6 候选官方链接 fetch：5 存活（含 Databento APAC ×2 官方确认 "Remote/HK/Shanghai/…"），1 已下线 404（Fathom，真实证明"搜索命中≠在招"） |
+| B 站源与多模态全链路 | VERIFIED | bilibili_video adapter（BV 规范 URL/去重、多 P 记录）；30 分钟视频 4 段 ASR + 6 帧 VLM；产物 claim JSON 含 platform/bvid/uploader/analysis_method/key_points |
+| 大批量 stdin EAGAIN | VERIFIED（修复） | 大 payload 改临时文件传 --messages-file |
+| DSH 内调度服务自启 | CODE VERIFIED / RUNTIME PARTIAL | apply() 现在启动 scheduler（stub-ctx 单测调通 18 tools+1 skill 注册）；live DSH 进程重启后的自动执行需下一次 App 重启观察 → PARTIAL |
+| 无人值守每日/每周 | NOT VERIFIED（计划配置并暂停） | daily 10:00（北京）与 weekly 报告已就绪但 enabled=0：正式长期 Host 机器未满足（见报告 §13 阻碍），不得宣称自动运行 |
