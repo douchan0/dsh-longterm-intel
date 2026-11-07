@@ -137,9 +137,6 @@ export async function pollWebOrRss(source, ctx) {
       kind: 'web_page',
       url: page.url,
       title: page.title,
-      // boards JSON raw dumps are big but low-density; compact them into
-      // stable, analysis-friendly lines (title | location | link) so the
-      // research model spends tokens on content instead of JSON syntax
       raw: compactJobsBoard(page.text) ?? page.text,
       published_at: page.published_at,
     }];
@@ -148,7 +145,17 @@ export async function pollWebOrRss(source, ctx) {
   for (const r of results) {
     if (ctx.isExcluded(`${r.title}\n${r.raw}`)) continue;
     if (ctx.hasKeywords && !ctx.hasKeywords(`${r.title}\n${r.raw}`)) continue;
+    // stable complementary content id for web pages: dynamic list pages carry
+    // rotating chrome (timestamps,推荐位,dates) that churns whole-text hashes
+    // and re-ingests the SAME page every poll (night-journal finding). The
+    // anchor signature only changes when real links appear/disappear.
+    let content_hash = r.content_hash;
+    if (r.kind === 'web_page' && !content_hash) {
+      const anchors = (r.raw.match(/https?:\/\/[^\s)"'<>]+/g) ?? []).map((u) => u.replace(/[?&](?:utm_\w+|tt_\w+)=[^&\s]*/g, '').replace(/[?&](?:_=)\d+/g, '')).sort();
+      content_hash = sha1(`${r.url}|${(r.title ?? '').trim()}|${anchors.slice(0, 400).join('\n')}`.slice(0, 8000));
+    }
     const id = ctx.store.ingestSourceItem({
+      content_hash,
       source_id: source.id ?? source.name,
       project_id: ctx.projectId,
       kind: r.kind,
