@@ -178,7 +178,7 @@ export function saveProjectFile(dataRoot, project, overwrite = false) {
   return file;
 }
 
-const ALLOWED_SOURCE_KINDS = ['web', 'rss', 'youtube_channel', 'youtube_video', 'github_repo', 'github_search', 'sitemap'];
+const ALLOWED_SOURCE_KINDS = ['web', 'rss', 'youtube_channel', 'youtube_video', 'github_repo', 'github_search', 'sitemap', 'bilibili_video', 'bilibili_creator'];
 
 export function validateSource(s) {
   if (!ALLOWED_SOURCE_KINDS.includes(s.kind)) {
@@ -188,6 +188,8 @@ export function validateSource(s) {
   if (s.kind === 'rss' && !s.spec?.url) throw new Error('rss source needs spec.url');
   if (s.kind === 'youtube_channel' && !s.spec?.channel && !s.spec?.url) throw new Error('youtube_channel needs spec.channel or spec.url');
   if (s.kind === 'youtube_video' && !s.spec?.url) throw new Error('youtube_video needs spec.url');
+  if (s.kind === 'bilibili_video' && !s.spec?.url && !s.spec?.bvid) throw new Error('bilibili_video needs spec.url (BV) or spec.bvid');
+  if (s.kind === 'bilibili_creator' && !s.spec?.uid && !s.spec?.mid && !s.spec?.url) throw new Error('bilibili_creator needs spec.uid');
   if ((s.kind === 'github_repo' || s.kind === 'github_search') && !s.spec?.repo) {
     // github_search may also carry spec.query
     if (!(s.kind === 'github_search' && s.spec?.query)) throw new Error('github source needs spec.repo (owner/name)');

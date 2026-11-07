@@ -171,7 +171,7 @@ export async function processVideoItem(item, ctx) {
     const sub = await downloadSubtitles(item.url, dir, { extraArgs: specArgs });
     const vtt = parseVtt(readFileSync(sub.path, 'utf8'));
     transcriptDoc = {
-      kind: 'youtube_transcript',
+      kind: 'video_transcript',
       text: vtt.text,
       meta: { lang: sub.lang, manual: sub.manual, cues: vtt.cues.length },
     };

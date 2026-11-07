@@ -45,7 +45,7 @@ export function createRunner({ dataRoot, config, store, mm, budget, logger }) {
       const runDocs = [];
       for (const item of newItems.slice(0, MAX_ITEMS_PER_RUN)) {
         try {
-          if (item.kind === 'youtube_video') {
+          if (item.kind === 'youtube_video' || item.kind === 'bilibili_video') {
             await processYouTube(project, item, runDocs, stats, cost, rid);
           } else if (item.kind === 'web_page' || item.kind === 'feed_entry') {
             if (item.kind === 'feed_entry' && item.raw && item.raw.length < 240) {
@@ -134,6 +134,8 @@ export function createRunner({ dataRoot, config, store, mm, budget, logger }) {
         if (src.kind === 'web' || src.kind === 'rss') ids = await pollWebOrRss(src, ctx);
         else if (src.kind === 'youtube_channel') ids = await pollYoutubeChannel0(src, ctx);
         else if (src.kind === 'youtube_video') ids = await pollYoutubeVideo0(src, ctx);
+        else if (src.kind === 'bilibili_video') ids = await pollBilibiliVideo0(src, ctx);
+        else if (src.kind === 'bilibili_creator') ids = await pollBilibiliCreator0(src, ctx);
         else if (src.kind === 'github_repo' || src.kind === 'github_search') ids = await pollGithub0(src, ctx);
         else stats.errors.push(`unknown source kind ${src.kind}`);
         for (const id of ids) {
@@ -173,6 +175,8 @@ export function createRunner({ dataRoot, config, store, mm, budget, logger }) {
   function pollWebOrRss(src, ctx) { return _web.pollWebOrRss(src, ctx); }
   function pollYoutubeChannel0(src, ctx) { return _yt.pollYoutubeChannel(src, ctx); }
   function pollYoutubeVideo0(src, ctx) { return _yt.pollYoutubeVideo(src, ctx); }
+  function pollBilibiliVideo0(src, ctx) { return _bl.pollBilibiliVideo(src, ctx); }
+  function pollBilibiliCreator0(src, ctx) { return _bl.pollBilibiliCreator(src, ctx); }
   function pollGithub0(src, ctx) { return _gh.pollGithubRepo(src, ctx); }
 
   async function processYouTube(project, item, docs, stats, cost, rid) {
@@ -413,9 +417,11 @@ export function compactCost(cost) {
 import * as webAdapter from '../sources/web.js';
 import * as ytAdapter from '../sources/youtube.js';
 import * as ghAdapter from '../sources/github.js';
+import * as bilibiliAdapter from '../sources/bilibili.js';
 const _web = webAdapter;
 const _yt = ytAdapter;
 const _gh = ghAdapter;
+const _bl = bilibiliAdapter;
 
 export function stripFence(text) {
   const m = String(text).match(/```(?:json)?\s*([\s\S]*?)```/);

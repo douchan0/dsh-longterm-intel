@@ -21,6 +21,18 @@ export function apply(ctx) {
     }
   }
 
+  // Start the scheduler service so per-project schedules actually fire while
+  // the plugin runs inside DSH (built on the DSH timer fabric). Fail-soft:
+  // running research is delegated to the same runtime as the CLI.
+  try {
+    ctx.inject?.(['tools'], () => {});
+    startSchedulerSafe(ctx).catch((error) => {
+      console.error(`[longterm-intel] scheduler start skipped: ${error?.message ?? error}`);
+    });
+  } catch (error) {
+    console.error(`[longterm-intel] scheduler start skipped: ${error}`);
+  }
+
   try {
     if (existsSync(fileURLToPath(SKILL_FILE_URL))) {
       const raw = readFileSync(SKILL_FILE_URL, 'utf8');
@@ -38,4 +50,14 @@ export function apply(ctx) {
   } catch (error) {
     console.error(`[longterm-intel] skill registration skipped: ${error}`);
   }
+}
+
+let schedulerStarted = false;
+async function startSchedulerSafe(ctx) {
+  if (schedulerStarted) return;
+  const { createRuntime } = await import('../src/runtime.js');
+  const rt = await createRuntime();
+  rt.scheduler.start();
+  schedulerStarted = true;
+  rt.logger.info?.(`[longterm-intel] scheduler started with ${rt.scheduler.list().length} schedule(s)`);
 }

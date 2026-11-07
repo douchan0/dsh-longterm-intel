@@ -29,3 +29,10 @@ reports/*.md
 # OS
 .DS_Store
 Thumbs.db
+
+# npm cache created during development
+.npmcache/
+
+# real research reports are part of the deliverable
+!reports/apac-job-intel/
+!reports/apac-job-intel/*

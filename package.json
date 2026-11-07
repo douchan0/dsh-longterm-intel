@@ -6,7 +6,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Qepie/dsh-longterm-intel.git"
+    "url": "git+https://github.com/douchan0/dsh-longterm-intel.git"
   },
   "engines": {
     "node": ">=22.19"

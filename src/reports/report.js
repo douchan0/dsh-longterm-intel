@@ -54,7 +54,7 @@ export function createReportFactory({ dataRoot, config, store, mm, budget, logge
     const longRunning = entities.filter((e) => Date.parse(e.last_seen ?? '') - Date.parse(e.first_seen ?? '') > 86_400_000 * 7).slice(0, 8);
 
     // ---- multimodal section
-    const mmDocs = docs.filter((d) => ['youtube_transcript', 'audio_transcript', 'video_frame_analysis', 'video_meta'].includes(d.kind));
+    const mmDocs = docs.filter((d) => ['video_transcript', 'youtube_transcript', 'audio_transcript', 'video_frame_analysis', 'bilibili_danmaku', 'video_meta'].includes(d.kind));
     const mmLines = mmDocs.slice(0, 12).map((d) => {
       let head = String(d.text ?? '').split('\n').slice(0, 2).join(' ');
       if (head.length > 220) head = `${head.slice(0, 220)}…`;
@@ -184,20 +184,44 @@ export function createReportFactory({ dataRoot, config, store, mm, budget, logge
           break;
         }
         case 'jobs_table': {
-          // 示范项目（任务书十二）要求的岗位情报表。数据来自带 subject 前缀
-          // "job:" 的 claims；没有数据时如实展示空表。
+          // Structured job-intel table. Data contract (defined per-project via
+          // analysis_directives, never plugin-global defaults): a claim with
+          // subject prefixed "job:" may carry a JSON object as text:
+          //   {company, position, regions, degree, experience, stack,
+          //    posted_at, verified_at, apply_url, match_reason, gaps, risks,
+          //    apac_allowed: true|false|null, source_verified: bool}
+          // Explicit rating rules (no text sniffing):
+          //   A: apac_allowed === true && source_verified === true
+          //   C: apac_allowed === false (or missing critical conditions)
+          //   B: everything else (potential but unconfirmed parts)
           L.push('\n## 岗位信息表\n');
           const jobClaims = claims.filter((c) => (c.subject ?? '').startsWith('job:'));
-          if (!jobClaims.length) { L.push('| 公司 | 职位 | 地区限制 | 学历/经验 | 技术栈 | 发布日期 | 最近核验 | 申请链接 | 评级 |\n|---|---|---|---|---|---|---|---|---|\n| （本期无岗位数据） | | | | | | | | |'); break; }
-          L.push('| 公司 | 职位 | 地区限制 | 学历/经验 | 技术栈 | 发布日期 | 最近核验 | 申请链接 | 评级 |');
-          L.push('|---|---|---|---|---|---|---|---|---|');
-          for (const c of jobClaims.slice(0, 25)) {
+          if (!jobClaims.length) { L.push('| 公司 | 职位 | 远程地区 | 学历 | 经验 | 技术栈 | 发布日期 | 核验日期 | 申请链接 | 匹配原因 | 风险 | 评级 |\n|---|---|---|---|---|---|---|---|---|---|---|---|\n| （本期无岗位数据） | | | | | | | | | | | |'); break; }
+          L.push('| 公司 | 职位 | 远程地区 | 学历 | 经验 | 技术栈 | 发布日期 | 核验日期 | 申请链接 | 匹配原因 | 风险 | 评级 |');
+          L.push('|---|---|---|---|---|---|---|---|---|---|---|---|');
+          for (const c of jobClaims.slice(0, 30)) {
             const ev = store.list('evidence', { claim_id: c.id }, { limit: 3 });
-            const link = ev.find((x) => x.url)?.url ?? '';
-            const lastCheck = fmtLocalDate(c.last_seen, tz);
-            const grade = (c.note ?? '').includes('verified') ? 'A' : (c.note ?? '').includes('potential') ? 'B' : 'C';
-            const [company, position] = c.subject.replace(/^job:/, '').split('/', 2);
-            L.push(`| ${company ?? '?'} | ${position ?? c.text.slice(0, 40)} | | | | ${fmtLocalDate(c.first_seen, tz)} | ${lastCheck} | ${link} | ${grade} |`);
+            const linkFromEvidence = ev.find((x) => x.url)?.url ?? '';
+            let job = null;
+            try { job = tryJson(c.text); } catch { /* plain-text fallback below */ }
+            const subjectParts = c.subject.replace(/^job:/, '').split('/');
+            let apac = job?.apac_allowed ?? null;
+            let verified = job?.source_verified ?? false;
+            if (apac === 'true') apac = true;
+            if (apac === 'false') apac = false;
+            if (verified === 'true') verified = true;
+            const rating = apac === true && verified === true ? 'A'
+              : apac === false ? 'C'
+                : 'B';
+            L.push([
+              job?.company ?? subjectParts[0] ?? '?',
+              job?.position ?? subjectParts[1] ?? truncateShort(c.text, 40),
+              job?.regions ?? '', job?.degree ?? '', job?.experience ?? '', job?.stack ?? '',
+              job?.posted_at ?? fmtLocalDate(c.first_seen, tz),
+              job?.verified_at ?? fmtLocalDate(c.last_seen, tz),
+              job?.apply_url ?? linkFromEvidence,
+              job?.match_reason ?? '', job?.risks ?? '', rating,
+            ].map((x) => String(x ?? '').replace(/\|/g, '\\|')).join(' | '));
           }
           break;
         }
