@@ -232,6 +232,23 @@ export function createReportFactory({ dataRoot, config, store, mm, budget, logge
           }
           break;
         }
+        case 'verification': {
+          // Required honesty section: failures, limitations, unverified items.
+          L.push('\n## 十三、失败、限制与未验证信息\n');
+          const errs = [];
+          for (const r of store.list('research_runs', { project_id: projectId }, { orderBy: 'started_at', desc: true, limit: 5 })) {
+            const st = tryJson(r.stats ?? '{}') ?? {};
+            for (const e of st.errors ?? []) errs.push(`（run ${r.id.slice(0, 6)}）${truncateShort(e, 180)}`);
+            if (r.notes) errs.push(`（run ${r.id.slice(0, 6)} 注记）${truncateShort(r.notes, 160)}`);
+          }
+          const skips = obs.filter((o) => o.kind === 'system').slice(0, 5);
+          if (!errs.length && !skips.length) L.push('（本轮无失败或额度拦截记录）');
+          for (const e of [...new Set(errs)].slice(0, 10)) L.push(`- ${e}`);
+          for (const s of skips) L.push(`- [系统] ${s.text}`);
+          const unverifiedJobs = ([]).length;
+          void unverifiedJobs;
+          break;
+        }
         default:
           L.push(`\n## ${sec}\n（自定义小节：模板未实现，占位）`);
       }
