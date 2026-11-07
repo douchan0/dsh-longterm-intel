@@ -1,0 +1,6 @@
+# 预算配置。全部可选；默认保守（见 global.yaml 的 global_budget）。
+# 每个研究项目还可以在自己的配置里覆盖（budget.* 字段）。
+projects: {}
+  # apac-job-intel:
+  #   minimax_calls_per_day: 60
+  #   daily_run_limit: 2

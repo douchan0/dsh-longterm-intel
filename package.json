@@ -1,0 +1,40 @@
+{
+  "name": "dsh-longterm-intel",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "DeepSeek Harness plugin for long-term multi-source intelligence: continuous collection, multimodal research, durable memory, scheduled reporting.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Qepie/dsh-longterm-intel.git"
+  },
+  "engines": {
+    "node": ">=22.19"
+  },
+  "bin": {
+    "intel": "./cli/intel.js"
+  },
+  "main": "./dsh/index.js",
+  "exports": {
+    ".": "./dsh/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "dsh",
+    "cli",
+    "config",
+    "docs",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "js-yaml": "4.1.0"
+  }
+}

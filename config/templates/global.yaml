@@ -1,0 +1,14 @@
+# dsh-longterm-intel 全局配置（由 intel init 生成到数据根目录）
+# 插件不包含任何研究主题相关默认值；一切研究语义都在项目/档案配置里。
+timezone: Asia/Shanghai          # 建议值；报告与调度的本地时间基准
+report_language: zh
+database: null                   # null → <数据根目录>/data/intel.db
+logs: null                       # null → <数据根目录>/logs
+concurrency: 2                   # 全局同时运行的研究任务上限
+fetch_timeout_ms: 30000
+minimax_bin: mmx
+global_budget:
+  daily: null                    # 全局日预算（次数），null = 不限
+  weekly: null
+  minimax_daily_calls: 200       # 全局每日 MiniMax 调用上限
+  reserve_percent: 20            # 保留至少 20% 订阅余量，触线即停止新任务

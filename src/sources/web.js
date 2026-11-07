@@ -1,0 +1,137 @@
+// Web page + RSS source adapters.
+//
+// Every item captures: original url, published date (when the source declares
+// one), fetched date, title and extracted text — publish time and event time
+// are distinct fields downstream (source_items.published_at vs events.occurred_at).
+import { htmlToText, tryJson } from '../core/util.js';
+
+const DEFAULT_UA = process.env.INTEL_UA || 'dsh-longterm-intel/0.1 (+local research)';
+
+async function fetchText(url, { timeoutMs = 30_000, headers = {} } = {}) {
+  const res = await fetch(url, {
+    headers: { 'user-agent': DEFAULT_UA, ...headers },
+    signal: AbortSignal.timeout(timeoutMs),
+    redirect: 'follow',
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+  return { text: await res.text(), url: res.url || url };
+}
+
+export async function fetchWebPage(url, { timeoutMs = 30_000 } = {}) {
+  const res = await fetch(url, {
+    headers: { 'user-agent': DEFAULT_UA, accept: 'text/html,application/xhtml+xml' },
+    signal: AbortSignal.timeout(timeoutMs),
+    redirect: 'follow',
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+  const html = await res.text();
+  const decode = (s) => s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ').trim();
+  const title = decode((html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? ''));
+  const published =
+    html.match(/<meta[^>]+property=["']article:published_time["'][^>]+content=["']([^"']+)/i)?.[1] ??
+    html.match(/<meta[^>]+name=["'](?:date|pubdate|publishdate|og:updated_time)["'][^>]+content=["']([^"']+)/i)?.[1] ??
+    html.match(/<time[^>]+datetime=["']([^"']+)/i)?.[1] ??
+    null;
+  const finalUrl = res.url || url;
+  const text = htmlToText(html);
+  return { url: finalUrl, title: title || finalUrl, html, text, published_at: published ? new Date(published).toISOString() : null };
+}
+
+/**
+ * Minimal dependency-free RSS 2.0 / Atom parser.
+ * Returns normalized items: {guid|link, title, published_at, summary, link}.
+ */
+export function parseFeed(xmlText) {
+  const items = [];
+  const rssBlocks = xmlText.match(/<item[\s\S]*?<\/item>/gi) ?? [];
+  const atomBlocks = xmlText.match(/<entry[\s\S]*?<\/entry>/gi) ?? [];
+  const pick = (block, tag) => (block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'))?.[1] ?? '').trim();
+  const decode = (s) => {
+    if (!s) return '';
+    if (s.startsWith('<![CDATA[')) return s.replace(/^<!\[CDATA\[/, '').replace(/\]\]>$/, '').trim();
+    return s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  };
+  const strip = (s) => decode(htmlToText(s));
+  for (const b of rssBlocks) {
+    const title = strip(pick(b, 'title'));
+    const link = strip(pick(b, 'link')) || blockGuid(pick(b, 'guid')) ;
+    items.push({
+      id: pick(b, 'guid') || link || title,
+      link,
+      title,
+      published_at: toIso(pick(b, 'pubDate') || pick(b, 'dc:date')),
+      summary: strip(pick(b, 'description')),
+    });
+  }
+  for (const b of atomBlocks) {
+    const title = strip(pick(b, 'title'));
+    const link =
+      b.match(/<link[^>]+href=["']([^"']+)["'][^>]*rel=["']alternate["']|^<link[^>]+href=["']([^"']+)["']/im)?.slice(1).find(Boolean) ?? '';
+    items.push({
+      id: pick(b, 'id') || link || title,
+      link,
+      title,
+      published_at: toIso(pick(b, 'published') || pick(b, 'updated')),
+      summary: strip(pick(b, 'summary') || pick(b, 'content')),
+    });
+  }
+  return items;
+  function blockGuid(g) { return g.startsWith('http') ? decode(g) : ''; }
+}
+
+function toIso(raw) {
+  if (!raw) return null;
+  const d = new Date(raw);
+  return isNaN(d) ? null : d.toISOString();
+}
+
+export async function fetchFeed(url, { timeoutMs = 30_000 } = {}) {
+  const { text, url: finalUrl } = await fetchText(url, { timeoutMs, headers: { accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml' } });
+  const items = parseFeed(text);
+  return { url: finalUrl, items };
+}
+
+// ---------------------------------------------------------------------------
+// Adapter: poll() a configured web/rss source; dedupe via store.ingestSourceItem
+// ---------------------------------------------------------------------------
+export async function pollWebOrRss(source, ctx) {
+  const kind = source.kind;
+  const url = source.spec?.url;
+  if (!url) throw new Error(`${kind} source ${source.id} lacks spec.url`);
+  let results;
+  if (kind === 'rss') {
+    const feed = await fetchFeed(url, { timeoutMs: ctx.config.global.fetch_timeout_ms });
+    results = feed.items.map((it) => ({
+      kind: 'feed_entry',
+      url: it.link || it.id,
+      title: it.title,
+      raw: tryJson(it.summary) ? JSON.stringify(it.summary) : String(it.summary ?? ''),
+      published_at: it.published_at,
+    }));
+  } else {
+    const page = await fetchWebPage(url, { timeoutMs: ctx.config.global.fetch_timeout_ms });
+    results = [{
+      kind: 'web_page',
+      url: page.url,
+      title: page.title,
+      raw: page.text,
+      published_at: page.published_at,
+    }];
+  }
+  const ids = [];
+  for (const r of results) {
+    if (ctx.isExcluded(`${r.title}\n${r.raw}`)) continue;
+    if (ctx.hasKeywords && !ctx.hasKeywords(`${r.title}\n${r.raw}`)) continue;
+    const id = ctx.store.ingestSourceItem({
+      source_id: source.id ?? source.name,
+      project_id: ctx.projectId,
+      kind: r.kind,
+      url: r.url,
+      title: r.title,
+      raw: (r.raw ?? '').slice(0, 200_000),
+      published_at: r.published_at,
+    });
+    if (id) ids.push(id);
+  }
+  return ids;
+}

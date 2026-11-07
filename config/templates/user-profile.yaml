@@ -1,0 +1,28 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# User Profile 模板（个人背景档案）。默认全空。
+# 规则：
+#  - 所有字段均可选；插件绝不推断或自动填充任何内容。
+#  - 只有你明确提供的字段才会出现在研究提示词里。
+#  - can_be_used_by 决定哪些 project_id 可以读取此档案；默认 [] = 不授权给任何项目。
+#  - 真实档案保存在 <数据根目录>/config/protected/profiles/，不在任何 git 仓库里。
+# ─────────────────────────────────────────────────────────────────────────────
+profile_id: user-math-main       # 必填：slug
+kind: user                       # user | research_subject | project_context
+name: 数学本科求职者（测试档案）
+status: active
+summary: 任务书测试阶段提供的最小档案
+can_be_used_by:
+  - apac-job-intel
+# ↓ 以下全部由用户自行填写；保持空即表示"未知"
+education:
+  degree: 数学本科
+professional_experience: null    # 未知：不推断
+skills: null                     # 未知：不推断
+location: null
+acceptable_remote_regions:
+  - APAC
+career_goals:
+  - 寻找可 APAC 远程申请的数理分析相关职位
+interests: null
+time_budget: null
+other: {}                        # 其他用户主动提供的背景

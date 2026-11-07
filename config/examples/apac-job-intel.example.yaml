@@ -1,0 +1,78 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# 示范研究项目：APAC 远程求职情报（任务书第十二节的测试项目）
+#
+# 注意：这只是插件的一个测试项目，不是插件的产品定位。
+# 本文件放在插件仓库的 examples 中，真实启用时把文件复制到
+# <数据根目录>/config/projects/apac-job-intel.yaml —— 一切研究语义都在配置里。
+#
+# 不得假设用户拥有未提供的技能或工作经验。
+# ─────────────────────────────────────────────────────────────────────────────
+project_id: apac-job-intel
+title: APAC 远程求职情报
+purpose: >
+  研究仍在招聘、允许 APAC 申请者申请的远程数理分析相关岗位，
+  结合创作者公开内容中出现的职业方向与技能趋势，用真实招聘信息验证。
+research_questions:
+  - 哪些公司现在（仍在招聘）提供允许 APAC 时区申请的远程数理分析类岗位？
+  - 这些岗位的学历/经验/技术栈要求是什么？与档案中的背景差异（缺口）在哪里？
+  - 创作者内容中提到的职业方向与技能要求，与实际招聘要求是否一致？出现了哪些新变化？
+keywords:
+  - remote
+  - quant
+  - analyst
+  - data
+  - apac
+exclude_keywords:
+  - unpaid internship
+sources:
+  - id: gh-greenhouse-demo
+    kind: web
+    name: Greenhouse 招聘板示例（测试用）
+    spec:
+      url: https://boards.greenhouse.io/companyname
+  - id: demo-research-blog
+    kind: rss
+    name: 行业创作内容（RSS 示例）
+    spec:
+      url: https://example.org/feed.xml
+  - id: demo-youtube-channel
+    kind: youtube_channel
+    name: 公开创作者频道（测试用）
+    spec:
+      channel: "@exampleCreator"
+      max_items: 10
+  - id: demo-github-project
+    kind: github_repo
+    name: goal-driven（创作者项目）
+    spec:
+      repo: lidangzzz/goal-driven
+      track: ["releases", "commits"]
+schedule:
+  - cadence: daily
+    at: "09:00"
+    action: run
+  - cadence: weekly
+    weekday: 5
+    at: "20:00"
+    action: report
+model_policy:
+  reasoning_provider: minimax
+  max_search_queries_per_run: 8
+multimodal_policy:
+  prefer_subtitles: true
+  transcribe_audio: true
+  max_audio_segments_per_run: 3
+  vision_enabled: true
+  max_vision_per_run: 4
+budget:
+  minimax_calls_per_run: 30
+  minimax_calls_per_day: 60
+  daily_run_limit: 2
+report_template:
+  sections: [summary, newinfo, events, entities, multimodal, trend, claims, questions, gaps, next_steps, sources, cost, jobs_table]
+report_format: markdown
+retention:
+  source_items_days: 365
+associated_profiles:
+  - user-math-main
+pause_on_quota_exhaust: true

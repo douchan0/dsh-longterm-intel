@@ -1,0 +1,31 @@
+# JS stacks
+node_modules/
+dist/
+coverage/
+
+# Runtime data — NEVER commit real user data, databases, credentials or
+# personal profiles. The plugin writes real config/data to an external data
+# root (default ~/.dsh/longterm-intel). Anything inside this repo is templates
+# and example fixtures only.
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+config/global.yaml
+config/providers.yaml
+config/budgets.yaml
+config/profiles/*
+!config/profiles/.gitkeep
+config/projects/*
+!config/projects/.gitkeep
+data/
+reports/*.md
+!reports/.gitkeep
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,19 @@
+# 模型/工具提供方配置。
+# MiniMax：官方订阅（独立额度池）；DeepSeek/glm 走 OpenCode Go CLI（enabled 打开后接入）。
+minimax:
+  type: mmx-cli
+  bin: mmx                       # mmx CLI 路径或命令名
+  text_model: MiniMax-M3.1-Flash
+  region: global                 # global | cn
+  search_max_results: 10         # 官方 search 每次最多 10 条且无分页参数
+
+opencode:
+  enabled: false                 # DeepSeek/OpenCode Go 池：需要你自己的 CLI 配置
+  bin: opencode
+  text_command: ["run"]
+  default_model: null            # 例如 "zhipu/glm-5.3-flash"
+
+github:
+  api: https://api.github.com
+  token_env: null                # 可选：从此环境变量读 token；公开仓库匿名也可用（限速 60/h）
+  per_hour_limit: 60
