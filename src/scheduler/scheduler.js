@@ -143,6 +143,12 @@ export function createScheduler({ dataRoot, config, store, runnerFactory, report
       let result;
       if (s.kind === 'report') result = await reportFactory.generate({ projectId: s.project_id });
       else result = await runnerFactory.run(project, { maxMs: spec.max_minutes ? spec.max_minutes * 60_000 : undefined });
+      // one-shot semantics: after a SUCCESSFUL fire, the schedule disables
+      // itself — its `at` is in the past and must not re-claim every tick.
+      if (!spec.cadence && spec.at) {
+        store.updateBy('schedules', { last_status: 'completed', enabled: 0, next_run_at: null }, { id: s.id });
+        return;
+      }
       store.updateBy('schedules', { last_status: 'completed' }, { id: s.id });
     } catch (e) {
       const retries = (s.retry_count ?? 0) + 1;
