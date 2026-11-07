@@ -53,7 +53,10 @@ function normalizeVideo(it, ctx) {
     raw: JSON.stringify({
       bvid: it.display_id ?? it.id, aid: it.id?.replace?.(/^BV/, 'av') ?? null,
       uploader: it.uploader ?? it.channel ?? null, duration: it.duration ?? null,
-      view_count: it.view_count ?? null, like_count: it.like_count ?? null,
+      // NB: view/like counts are deliberately EXCLUDED — they change on every
+      // poll and would churn the content hash, defeating source-item dedupe
+      // (night-journal finding: duplicate BV rows). Re-read them from meta at
+      // analysis time when needed.
       multi_p: (it._type === 'playlist' || Array.isArray(it.entries)) ? (it.entries?.length ?? null) : null,
       chapters: Array.isArray(it.chapters) ? it.chapters.slice(0, 30) : null,
       description: String(it.description ?? '').slice(0, 6000),

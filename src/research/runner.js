@@ -225,13 +225,15 @@ const MAX_ANALYSIS_BATCHES_PER_RUN = 4;
     } catch { /* summary stays short; not fatal */ }
   }
 
-  function metaDoc(project, item, extra) {
+  function metaDoc(project, item, extra = {}) {
     void project;
     return {
       project_id: project.project_id,
       source_item_id: item.id,
       url: item.url,
-      kind: extra.kind,
+      // never produce null-kind rows for items whose kind the stage-2 switch
+      // didn't special-case (search_hit, sitemap, ...): use the item's own kind
+      kind: extra.kind ?? item.kind ?? 'web_page',
       text: extra.text ?? item.raw ?? '',
       meta: extra.meta ? JSON.stringify(extra.meta) : null,
       content_hash: sha1((extra.text ?? item.raw ?? item.url).slice(0, 8000)),
