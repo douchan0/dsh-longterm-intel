@@ -15,8 +15,10 @@
 //     usage *totals* are reported as 0 counters on this plan, so the budget
 //     manager treats counts as estimates and percentages as observed truth.
 import { extractJson, runChild, nowIso } from '../core/util.js';
-import { stat } from 'node:fs/promises';
+import { stat, writeFile, unlink } from 'node:fs/promises';
 import { basename, join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { writeFileSync, unlinkSync } from 'node:fs';
 
 export const ASR_LIMIT_SECONDS = 500;
 
@@ -57,26 +59,27 @@ export function createMiniMaxAdapter(config, logger) {
       if (messages.length === 1 && !messages[0].role?.startsWith('assistant')) {
         // single user message: plain --message call, most robust path
         args.push('--message', messages[0].content ?? messages[0]);
-      } else {
-        args.push('--messages-file', '-');
+        const out = await mmx(args, { timeoutMs });
+        return parseTextReply(out, model);
+      }
+      // multi-turn: large payloads crash mmx stdin reads (EAGAIN), so write a
+      // real temp messages file and pass it by path
+      if (messages.length === 1 && typeof messages[0] === 'object' && messages[0].content && messages[0].role === 'user') {
+        args.push('--message', messages[0].content);
+        const out = await mmx(args, { timeoutMs });
+        return parseTextReply(out, model);
       }
       const payload = messages.map((m) => (typeof m === 'string' ? { role: 'user', content: m } : m));
-      const out = await mmx(args, { timeoutMs, input: JSON.stringify(payload) });
-      const data = extractJson(out);
-      if (!data) throw new Error(`mmx text chat returned unparseable output: ${out.slice(0, 300)}`);
-      const blocks = Array.isArray(data.content) ? data.content : [{ type: 'text', text: data.content ?? data.reply ?? out }];
-      const textParts = blocks.filter((b) => b.type === 'text').map((b) => b.text);
-      const thinking = blocks.filter((b) => b.type === 'thinking').map((b) => b.thinking).join('\n');
-      return {
-        content: textParts.join('\n').trim(),
-        thinking: thinking || null,
-        usage: data.usage ?? null,
-        model: data.model ?? model,
-        stop_reason: data.stop_reason ?? null,
-        raw: data,
-      };
+      const tmpFile = join(tmpdir(), `mmx-messages-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.json`);
+      writeFileSync(tmpFile, JSON.stringify(payload), 'utf8');
+      args.push('--messages-file', tmpFile);
+      let out;
+      try {
+        out = await mmx(args, { timeoutMs });
+      } finally {
+        try { unlinkSync(tmpFile); } catch { /* best effort */ }
+      }
     },
-
     /** Image understanding (local path or URL). */
     async vision(image, prompt = 'Describe the image.', { timeoutMs = 180_000 } = {}) {
       const out = await mmx(['vision', 'describe', '--image', image, '--prompt', prompt, '--output', 'json', '--quiet'], { timeoutMs });
@@ -113,6 +116,23 @@ export function createMiniMaxAdapter(config, logger) {
       return { observed: true, models, general_interval_percent: general?.interval_remaining_percent ?? null, general_weekly_percent: general?.weekly_remaining_percent ?? null, observed_at: nowIso() };
     },
   };
+
+  /** Parse the unified mmx text chat json reply shape. */
+  function parseTextReply(out, model) {
+    const data = extractJson(out);
+    if (!data) throw new Error(`mmx text chat returned unparseable output: ${out.slice(0, 300)}`);
+    const blocks = Array.isArray(data.content) ? data.content : [{ type: 'text', text: data.content ?? data.reply ?? out }];
+    const textParts = blocks.filter((b) => b.type === 'text').map((b) => b.text);
+    const thinking = blocks.filter((b) => b.type === 'thinking').map((b) => b.thinking).join('\n');
+    return {
+      content: textParts.join('\n').trim(),
+      thinking: thinking || null,
+      usage: data.usage ?? null,
+      model: data.model ?? model,
+      stop_reason: data.stop_reason ?? null,
+      raw: data,
+    };
+  }
 
   async function transcribeOne(path) {
     const out = await mmx(['speech', 'transcribe', '--file', path, '--response-format', 'verbose_json', '--timestamp-level', 'sentence', '--output', 'json', '--quiet'], {});
