@@ -353,25 +353,39 @@ ${blocks.join('\n\n----\n\n')}`;
     }
     for (const c of data.claims ?? []) {
       if (!c?.text) continue;
-      let doc = (c.source_urls ?? [])[0] ? store.list('documents', { project_id: project.project_id, url: (c.source_urls ?? [])[0] }, { limit: 1 })[0] : null;
-      const claimId = store.insert('claims', {
-        project_id: project.project_id, subject: c.subject ?? null, text: c.text,
-        status: c.status === 'update' ? 'superseded_candidate' : 'current',
-        first_seen: nowIso(), last_seen: nowIso(), note: c.confidence ?? null,
-      });
+      // claim identity: same (project, subject) is the SAME evolving claim —
+      // refresh it (keep first_seen, bump last_seen) instead of double counting;
+      // a status=update creates the inheriting claim and supersedes the old one.
+      const existing = c.subject
+        ? store.list('claims', { project_id: project.project_id, subject: c.subject }, { limit: 1 })[0]
+        : null;
+      let claimId;
+      if (existing && c.status !== 'update') {
+        claimId = existing.id;
+        store.updateBy('claims', { text: c.text ?? existing.text, last_seen: nowIso() }, { id: existing.id });
+      } else if (existing && c.status === 'update') {
+        claimId = store.insert('claims', {
+          project_id: project.project_id, subject: c.subject, text: c.text,
+          status: 'current', first_seen: nowIso(), last_seen: nowIso(),
+        });
+        store.updateBy('claims', { status: 'superseded', superseded_by: claimId }, { id: existing.id });
+        stats.claims_updated++;
+      } else {
+        claimId = store.insert('claims', {
+          project_id: project.project_id, subject: c.subject ?? null, text: c.text,
+          status: c.status === 'update' ? 'current' : 'current',
+          first_seen: nowIso(), last_seen: nowIso(), note: c.confidence ?? null,
+        });
+      }
+      const doc = (c.source_urls ?? [])[0]
+        ? store.list('documents', { project_id: project.project_id, url: (c.source_urls ?? [])[0] }, { limit: 1 })[0]
+        : null;
       store.insert('evidence', {
         project_id: project.project_id, claim_id: claimId,
         document_id: doc?.id ?? null, quote: truncate(c.text, 400),
-        url: (c.source_urls ?? [])[0] ?? null, support: c.status ?? 'new', confidence: c.confidence ?? 'medium', at: nowIso(),
+        url: (c.source_urls ?? [])[0] ?? null, support: c.status ?? 'new',
+        confidence: c.confidence ?? 'medium', at: nowIso(),
       });
-      if (c.status === 'update') {
-        // historical view tracking: previous current claim on same subject ->
-        // superseded, chain recorded via superseded_by === new claim id
-        const prior = store.list('claims', { project_id: project.project_id, subject: c.subject ?? '', status: 'current' })
-          .filter((p) => p.id !== claimId);
-        for (const p of prior) store.updateBy('claims', { status: 'superseded', superseded_by: claimId }, { id: p.id });
-        stats.claims_updated += prior.length;
-      }
       stats.claims_new++;
     }
     if (data.contradictions?.length) {
