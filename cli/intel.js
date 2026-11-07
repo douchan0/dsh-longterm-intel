@@ -110,7 +110,12 @@ try {
       const project = rt.getProject(r.dataRoot, pid) ?? fail(`project not found: ${pid}`);
       const prow = r.store.get('projects', { id: pid });
       if (prow?.status === 'paused') fail(`project ${pid} is paused (intel project resume ${pid})`);
-      if (r.scheduler.list(pid).some((s) => s.last_status === 'running')) fail('previous run still in progress (overlap protection)');
+      // overlap protection based on REAL run activity, not a schedule cell
+      // that could be left stuck by a killed host (stale-state recovery)
+      const recentRunning = await r.store.list('research_runs', { project_id: pid, status: 'running' }, { limit: 5 });
+      const STALE_MS = 6 * 3600_000;
+      const active = recentRunning.find((n) => Date.now() - Date.parse(n.started_at ?? '') < STALE_MS);
+      if (active) fail(`previous run ${active.id} (started ${active.started_at}) still in progress (overlap protection)`);
       const res = await r.runnerFactory.run(project);
       out({ run: res.run_id, stats: res.stats, cost: res.cost });
       if (args.includes('--report')) {
