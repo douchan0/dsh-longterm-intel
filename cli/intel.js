@@ -115,7 +115,17 @@ try {
       const recentRunning = await r.store.list('research_runs', { project_id: pid, status: 'running' }, { limit: 5 });
       const STALE_MS = 6 * 3600_000;
       const active = recentRunning.find((n) => Date.now() - Date.parse(n.started_at ?? '') < STALE_MS);
-      if (active) fail(`previous run ${active.id} (started ${active.started_at}) still in progress (overlap protection)`);
+      if (active) {
+        if (args.includes('--resume')) {
+          // explicit operator resume: mark dangling rows interrupted, allow a
+          // fresh run (the previous run's data stays; backlog recovery handles
+          // the un-processed tail)
+          r.store.updateBy('research_runs', { status: 'interrupted', finished_at: new Date().toISOString() }, { id: active.id });
+          r.logger.warn(`marking dangling run ${active.id} as interrupted (--resume)`);
+        } else {
+          fail(`previous run ${active.id} (started ${active.started_at}) still in progress (overlap protection; pass --resume if the host died)`);
+        }
+      }
       const res = await r.runnerFactory.run(project);
       out({ run: res.run_id, stats: res.stats, cost: res.cost });
       if (args.includes('--report')) {
