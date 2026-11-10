@@ -108,8 +108,23 @@ function toIso(raw) {
   return isNaN(d) ? null : d.toISOString();
 }
 
+/** Retry-friendly fetch: the night journal showed ~5% transient failures on
+ * feeds/gov pages; small backoff removes a whole failure class. */
+async function fetchWithRetry(url, opts = {}, { attempts = 3, backoffMs = [2_000, 8_000, 20_000] } = {}) {
+  let lastErr = null;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fetchText(url, opts);
+    } catch (e) {
+      lastErr = e;
+      if (i < attempts - 1) await new Promise((r) => setTimeout(r, backoffMs[i] ?? 5_000));
+    }
+  }
+  throw lastErr;
+}
+
 export async function fetchFeed(url, { timeoutMs = 30_000 } = {}) {
-  const { text, url: finalUrl } = await fetchText(url, { timeoutMs, headers: { accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml' } });
+  const { text, url: finalUrl } = await fetchWithRetry(url, { timeoutMs, headers: { accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml' } });
   const items = parseFeed(text);
   return { url: finalUrl, items };
 }
@@ -132,7 +147,13 @@ export async function pollWebOrRss(source, ctx) {
       published_at: it.published_at,
     }));
   } else {
-    const page = await fetchWebPage(url, { timeoutMs: ctx.config.global.fetch_timeout_ms });
+    // retry the page twice more on transient failures (night-journal lesson)
+    let page = null;
+    try {
+      page = await fetchWebPage(url, { timeoutMs: ctx.config.global.fetch_timeout_ms });
+    } catch (e) {
+      page = await fetchWebPage(url, { timeoutMs: ctx.config.global.fetch_timeout_ms });
+    }
     results = [{
       kind: 'web_page',
       url: page.url,
